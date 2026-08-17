@@ -2,7 +2,7 @@
 
 *Scale testing a production PostgreSQL system I built alone*
 
-**Draft 5 — 17 August 2026.** §5 describes a plan, not an execution.
+**Draft 6 — 17 August 2026.** §5 describes a plan, not an execution. §2.1 and §4.3 carry corrections made after first publication.
 
 ---
 
@@ -88,6 +88,23 @@ help.** It did not, and the reason is structural. A large sequential scan does n
 into the shared pool — it uses a **ring buffer**, a small bounded circular allocation, so one scan
 cannot evict everything else. The design is correct, and it means a scan-heavy workload is largely
 insensitive to the size of the pool it is bypassing.
+
+**A correction, made after this document was first published.** The registration's supporting
+arithmetic claimed no table in this system leaves ring-scanning as the pool grows. That table was
+computed at a smaller data scale and, when finally recomputed at the scale the measurements use, is
+**false**: the largest table sits at 15,526 blocks against a 4,096-block ring threshold at 128 MB
+and a 32,768-block threshold at 1 GB, so it **does** leave ring-scanning as the pool grows.
+
+**The prediction still holds, on a narrower and better reason** — registered before the arm ran.
+**Nothing in the measured workload sequentially scans that table**: every access is by index, zero
+sequential scans against sixteen index scans, and the ring engages only on sequential scans. The
+registered falsifier — any sequential scan on that table at either pool size — did not fire.
+
+**The confirming evidence is structural rather than timed.** An A-B-A comparison on buffer counters,
+which are deterministic and immune to the host contention that invalidated the timing run, returned
+**byte-identical results at every arm**: 4,240 blocks read cold, and **zero read once warm**, at both
+128 MB and 1 GB. Once warm, the workload reads nothing from outside a 128 MB pool, so a larger pool
+has no headroom to take.
 
 This produced the study's most counterintuitive result, and it is a fact about Postgres rather than
 about this application: **`blks_read` does not mean "read from disk."** It means "not found in
@@ -451,11 +468,24 @@ changed in the evening on evidence not yet gathered when the position was formed
 
 ### 4.3 D — the required negative result
 
-D was registered expecting it to fail, and did. §2.1 explains why raising `shared_buffers` cannot
-help scan-heavy work. It is reported at equal prominence because a study that publishes only its
-successes is not reporting, it is advertising. It is also the most portable finding here: the
-reasoning applies to any Postgres system where someone is about to raise `shared_buffers` because a
-graph looks bad.
+D was registered expecting it to fail, and its mechanism is confirmed. §2.1 explains why raising
+`shared_buffers` cannot help this workload, and gives the buffer-counter evidence — identical reads
+at both pool sizes, zero once warm.
+
+**But D is not closed on timing, and that distinction is the honest one.** The timing comparison ran
+to completion and the harness declared the session **invalid** on its own registered contamination
+criteria: twenty-four cells over the 50% threshold, driven by host load that reached 20.87 during the
+final arm. Cgroup throttling was ruled out as the cause. Three cells on the heaviest path were stable
+and comfortably inside the registered band, but the rule requires *every* cell on that path and two
+carried drift above 400%.
+
+**Those three stable cells are recorded as a hint, not a result.** Claiming D from the cells that
+happened to survive is precisely the take-the-cheaper-reading move this study forbids, and no
+threshold was moved to accommodate the run. D's timing needs re-running on a quiet host.
+
+It is reported at equal prominence because a study that publishes only its successes is not
+reporting, it is advertising. The reasoning is also the most portable thing here: it applies to any
+Postgres system where someone is about to raise `shared_buffers` because a graph looks bad.
 
 ### 4.4 C — measured, and deliberately not ranked
 
@@ -560,6 +590,13 @@ reported for either table.** The table where insert cost *was* measured carries 
 sets were confirmed identical across four catalogues — production, the mirror, the local copy and the
 schema snapshot — so the mirror enforces exactly what production enforces. Recorded because a limit
 that turns out not to bite is still a limit that was there.
+
+**A registered claim refuted after publication.** The pre-registration's ring-threshold arithmetic
+was computed at a smaller data scale and never recomputed until the closing session. Recomputed, its
+central claim is false — the largest table does leave ring-scanning as the pool grows (§2.1). The
+prediction it supported still holds, on a narrower mechanism registered before the confirming arm
+ran. **This is recorded rather than corrected silently**, because the study's own standard is that a
+record which quietly fixes itself cannot be audited.
 
 **Open items, listed rather than tidied away.** The 15-record residual in A's insert cost, of which a
 page-split term accounts for one. An index with no matching query shape anywhere that has a scan
