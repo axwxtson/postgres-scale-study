@@ -57,7 +57,7 @@ can be reproduced elsewhere. The repository can be opened to a named reviewer on
 
 ## Status
 
-**Draft 5, 17 August 2026.** Section 5 describes a migration plan that has not yet executed and is
+**Draft 6, 17 August 2026.** Section 5 describes a migration plan that has not yet executed and is
 labelled as such. It will be updated to a result when it ships.
 
 The canonical copy lives in the private repository alongside the evidence it cites; this is a
