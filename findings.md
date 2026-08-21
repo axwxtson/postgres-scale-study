@@ -2,7 +2,7 @@
 
 *Scale testing a production PostgreSQL system I built alone*
 
-**Draft 6 — 17 August 2026.** §5 describes a plan, not an execution. §2.1 and §4.3 carry corrections made after first publication.
+**Draft 7 — 20 August 2026.** §5 describes a plan, not an execution. §2.1, §4.3 and §4.5 carry corrections made after first publication.
 
 ---
 
@@ -415,6 +415,10 @@ other interventions remove loops; A removes the cost per loop.** Reducing iterat
 there are many, so its benefit decays as you page deeper. A makes each iteration nearly free, so its
 benefit does not decay. Flatness across offsets is the signature of the mechanism.
 
+**That account is correct about each intervention alone and was wrong about how they combine.**
+§4.5 sets out the refutation: loops and cost-per-loop are factors in a product, not terms in a sum,
+and reasoning about them additively produced two failed predictions in opposite directions.
+
 **Cascade DELETE: −93.85% at the median**, worst of thirty victims still 88.69%. Deleting a workout
 cascades to that table, and without the index each cascade scans it whole. Quoted against a floor the
 instrument measured for itself — the same comparison with no intervention gave 1.99% median, 6.72%
@@ -468,22 +472,27 @@ changed in the evening on evidence not yet gathered when the position was formed
 
 ### 4.3 D — the required negative result
 
-D was registered expecting it to fail, and its mechanism is confirmed. §2.1 explains why raising
-`shared_buffers` cannot help this workload, and gives the buffer-counter evidence — identical reads
-at both pool sizes, zero once warm.
+D was registered expecting it to fail, and it failed — on both mechanism and timing.
 
-**But D is not closed on timing, and that distinction is the honest one.** The timing comparison ran
-to completion and the harness declared the session **invalid** on its own registered contamination
-criteria: twenty-four cells over the 50% threshold, driven by host load that reached 20.87 during the
-final arm. Cgroup throttling was ruled out as the cause. Three cells on the heaviest path were stable
-and comfortably inside the registered band, but the rule requires *every* cell on that path and two
-carried drift above 400%.
+§2.1 gives the mechanism evidence: identical buffer reads at both pool sizes, zero once warm.
 
-**Those three stable cells are recorded as a hint, not a result.** Claiming D from the cells that
-happened to survive is precisely the take-the-cheaper-reading move this study forbids, and no
-threshold was moved to accommodate the run. D's timing needs re-running on a quiet host.
+**The timing took two attempts and the first is part of the record.** The initial run was declared
+**invalid** by the harness on its own registered contamination criteria — twenty-four cells over the
+50% threshold, driven by host load that reached 20.87. Three cells on the heaviest path were stable
+and comfortably inside the registered band, and **they were recorded as a hint, not a result**,
+because the rule requires every cell on that path.
 
-It is reported at equal prominence because a study that publishes only its successes is not
+**The re-run, on a quiet host, closed valid.** The harness did not fire; the largest deviation on any
+qualifying cell was **1.95%** against a registered floor of 8.2%, and the largest drift between the
+two control phases was 7.2%. The registered prediction is a **hit**: a larger pool makes no
+difference.
+
+**Two details recorded because they cost nothing and would matter to anyone re-running this.** The
+larger pool was marginally *slower* on eight of nine cells — inside the floor, so nil, but the sign
+is stated rather than rounded away. And when the valid run agreed with the invalid run's surviving
+cells, **that agreement was not used as corroboration**; the invalid verdict stands unaltered.
+
+D is reported at equal prominence because a study that publishes only its successes is not
 reporting, it is advertising. The reasoning is also the most portable thing here: it applies to any
 Postgres system where someone is about to raise `shared_buffers` because a graph looks bad.
 
@@ -494,6 +503,47 @@ C's benefit is contingent on concurrent access, and the measurement environment 
 would judge C is, by construction, not collected. Ranking it would mean ranking on evidence that
 cannot speak to its main property. **The refusal is the finding.** It is recorded as measured, with
 its mechanism confirmed, and excluded from the ordering until a concurrency study exists.
+
+---
+
+### 4.5 Composing them — where the account I had been using broke
+
+Every intervention above was measured alone. The last measurement of the study asked what happens
+when two are applied together, and it refuted the account this document had been built on.
+
+**The account.** A removes the cost per loop; B removes the loops. Both halves were confirmed by
+plan capture — B does take the iteration count from 1,314 to 10, and A does make each iteration
+nearly free. From that I predicted the two would compose **near-additively**: each contributing its
+own saving, with the combination worth roughly the sum.
+
+**Two registered predictions were drawn from it and both missed, in opposite directions.** At the
+first page the combination was **89% better** than the better of the two alone, where I had predicted
+they would land within 8.2% of each other. At the deepest page it was **2% better** than A alone,
+where I had predicted at least 20%.
+
+The measured times at the deepest page make it plain: **the combination 30.6 ms, A alone 31.2 ms, B
+alone 2,641 ms.**
+
+**They are not additive terms. They are multiplicative factors in one product** — total cost is
+loops × cost-per-loop, and each intervention attacks a different factor. Halve one factor and you
+halve the product; halve both and you quarter it. A prediction of additivity is not a small
+mis-estimate of a compositional effect, it is the wrong shape of arithmetic, and it produced errors
+in both directions from the same mistake.
+
+**The falsifier that fired most usefully had a wrong rationale.** I had registered that if the
+combination beat B substantially at the first page, it would mean B had failed to remove the loops.
+It did beat B substantially — and the capture shows B removed the loops exactly as claimed. **The
+false premise was one I had never stated: that a surviving loop is cheap.** Each of B's ten remaining
+iterations was still a full sequential scan of a 1,237-block table at about 1.68 ms, and ten of those
+is essentially the whole of B's 17 ms. B removed 99% of the iterations and kept nearly all of the
+cost.
+
+**One mechanism is left unexplained rather than resolved.** A third falsifier fired on seven
+non-deciding cells with shortfalls of 0.05–0.25 ms. A planning-cost explanation is plausible —
+planning is 1.33–2.16 ms for this query, the same order as those entire cell times — but planning
+time was not captured for the relevant archetypes, and **capturing it after seeing a surprising
+result would be measurement invented to fit.** It is named as the next thing to measure rather than
+answered now.
 
 ---
 
@@ -598,6 +648,13 @@ prediction it supported still holds, on a narrower mechanism registered before t
 ran. **This is recorded rather than corrected silently**, because the study's own standard is that a
 record which quietly fixes itself cannot be audited.
 
+**One cell that will not settle, across three observations.** The heaviest cell on the most-measured
+query path shows between-repeat spread of 46.3%, 46.6% and 47.6% — over the threshold at which a cell
+is flagged suspect, under the one at which a run is discarded, in two separate sessions testing two
+different interventions. **In one of those sessions it did not appear in the treatment phase at all.**
+Every run carrying it closed valid on the registered criteria and no threshold was moved to
+accommodate it. **Three observations is a pattern rather than an anomaly, and it has no explanation.**
+
 **Open items, listed rather than tidied away.** The 15-record residual in A's insert cost, of which a
 page-split term accounts for one. An index with no matching query shape anywhere that has a scan
 count of 1, left unexplained rather than rationalised. Why `VACUUM` is not idempotent on relation
@@ -696,6 +753,15 @@ passing. Both had been committed, both had been read, and the comment won becaus
 artefact read first. The contradiction sat in the tree for months, and the real behaviour it
 concealed was that every signed-in user was being silently logged out once a week. **Prose has no
 failing state**, so a comment and a test can disagree indefinitely without anything going red.
+
+**Check that your quiet-machine test measures quiet.** Before trusting any timing on a shared or
+personal machine, confirm what your idleness metric actually counts. A gate written against macOS
+load average in this study was **unreachable on that hardware regardless of what was closed** —
+`loadavg` there counts threads in uninterruptible states, so it read above the threshold while the
+host was genuinely 86% idle by two other tools. The gate was replaced with a CPU-idle measure,
+in writing and before the run it governed, and the run then closed valid at a load average the
+original gate would have rejected. **This is the only item on this list that comes from the
+measurement environment rather than the database, and it cost a wasted hundred-minute run.**
 
 **Ask what the statistic's null distribution is.** Not what the number is — what the instrument
 returns when the thing being measured is absent. If nobody knows, nobody knows what the number means.
