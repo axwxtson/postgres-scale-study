@@ -549,38 +549,44 @@ answered now.
 
 ## 5. Shipping it
 
-*A plan, not an execution.*
+*Executed 25 August 2026. This section was first published as a plan; it now reports what was run.*
 
-Two indexes ship, as **online index creations against live traffic** — the system stays up
+Two indexes shipped, as **online index creations against live traffic** — the system stayed up
 throughout. That constraint is the point: creating an index the ordinary way takes a lock that blocks
 writes for the duration, which on a table with users mid-session is an outage.
 `CREATE INDEX CONCURRENTLY` builds in two passes while writes continue, at the cost of being slower
 and more fragile.
 
-Three properties drive the runbook, each a way it goes wrong. **It cannot run inside a transaction
+Three properties drove the runbook, each a way it goes wrong. **It cannot run inside a transaction
 block**, so tooling that wraps everything in one will fail confusingly. **A failed run leaves an
 invalid index behind** — visible in the catalogue, maintained on every write, never used by the
 planner, and requiring a drop before retrying. **The check is `pg_index.indisvalid` after each
 statement**, because nothing else will tell you. And it does two table passes plus a wait for
-concurrent transactions, so timing is recorded even though at this size it is seconds.
+concurrent transactions, so timing was recorded — at this size it turned out to be milliseconds, not
+the seconds this section originally expected.
 
-**The retirement ships first and separately.** Four indexes can be retired: three with no matching
+**The retirement shipped first and separately.** Four indexes could be retired: three with no matching
 query shape anywhere in the codebase, and one that is a **byte-identical duplicate** of another under
 a different name. That duplicate is the clearest case — same columns, order and predicate; one chosen
 324 times, the other never. Given identical alternatives the planner picks one and does not revisit,
 so **the unused twin can never be selected while its twin exists**, while still being maintained on
 every insert.
 
-Those drops are separate from the index creations for three reasons. **Reversibility** — a failed
+Those drops were kept separate from the index creations for three reasons. **Reversibility** — a failed
 create leaves something droppable; a bad drop leaves you rebuilding under load, which is the
 situation the exercise exists to avoid. **Blast radius** — three drops and two creates at once means
 that if something goes wrong, which thing went wrong is a question. **Attribution** — mixing an
 irreversible operation into a demonstration of safe online creation muddies what it demonstrates.
 
-One dependency runs the other way: part of the argument for B is that it lands as the thirteenth
-index rather than the seventeenth. If the retirement does not land, the write-mix argument stands
-alone and is probably sufficient, but the ruling would be revisited rather than executed on an
-assumption.
+**A correction to this section as first published.** One dependency ran the other way: part of the
+argument for B was that it lands as the thirteenth index rather than the seventeenth. This section
+hedged that argument — *"if the retirement does not land, the write-mix argument stands alone"* —
+and **that hedge was already stale on the day it was published.** The retirement had landed. It was
+applied to the development database on 17 August, and it was live on production before this
+document went out: direct catalogue reads on 21 and 25 August both found all
+four retired names absent. **The date it actually ran against production is not established**, and is
+not invented here — only the end state was ever read. B shipped as the thirteenth, as the argument
+assumed, and A as the sixth on its table.
 
 **The drops were not decided on usage statistics**, for the reason in §3.8. Every verdict came from
 tracing query shapes through the source: does a matching query exist, and is it reachable — behind a
@@ -589,11 +595,35 @@ query exists behind a live authenticated route, but the component that would cal
 rendered. That is a dead route and a dead component, which is a real finding, but not proof that
 nothing calls the endpoint.
 
+**Both indexes were adopted by the planner, and that was not a foregone conclusion.** At 238 workouts
+and 765 personal-best rows a sequential scan can genuinely be cheaper than an index scan, and
+non-adoption was registered in advance as a legitimate outcome rather than a failure. It did not
+happen. The plan captured afterwards reaches the workouts table through B, and the personal-bests
+table through a bitmap scan on A.
+
+**The interesting part is the shape, not the per-node cost.** Before, a `Sort` sat above the entire
+join: every estimated row had to be produced and sorted before the first of ten could be returned, so
+the plan's startup cost was **25,970** — essentially the whole join, paid before anything came back.
+After, the ordering comes off the index, the `Sort` node is gone, and the `LIMIT` short-circuits;
+startup cost is **130**. The full-scan total barely moved, **25,959 to 24,501**. What changed is that
+the query no longer has to reach it.
+
+**These are planner estimates, not measurements.** The captures were taken with plain `EXPLAIN`, never
+`EXPLAIN ANALYZE`, deliberately: a single unrepeated timing against a buffer cache in an unknown state
+is not a measurement, and it would have been the weakest number in this document. §6 and the appendix
+refuse latency claims at this scale, and this section makes none either.
+
+**The execution itself was uneventful, which is what an online creation is for.** A took
+**11.430 ms** and B **7.482 ms**, run one at a time in a single session with no transaction block.
+Each passed its validity gate immediately afterwards — on `indisvalid`, and on `indisready`
+alongside it, which the two-phase build makes a strictly stronger check. The catalogue diff taken
+afterwards contains **added lines only**: no existing index was dropped, renamed or altered.
+
 **None of this makes production measurably faster** — every figure was measured at 28,053 workouts
-against production's 238. The case for shipping now is that both indexes are cheap, both are
-structurally sound, and the alternative is applying them later under load, at exactly the moment when
-the system is degrading and the safe path is narrower. **The benefit is latent, and it is being paid
-for in advance.**
+against production's 238, and executing changed nothing about that. The case for shipping now was that
+both indexes are cheap, both are structurally sound, and the alternative is applying them later under
+load, at exactly the moment when the system is degrading and the safe path is narrower. **The benefit
+is latent, and it has now been paid for in advance.**
 
 ---
 
