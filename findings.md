@@ -2,7 +2,7 @@
 
 *Scale testing a production PostgreSQL system I built alone*
 
-**Draft 7 — 20 August 2026.** §5 describes a plan, not an execution. §2.1, §4.3 and §4.5 carry corrections made after first publication.
+**Draft 9 — 26 August 2026.** §2.1, §4.3, §4.4 and §4.5 carry corrections made after first publication.
 
 ---
 
@@ -498,11 +498,36 @@ Postgres system where someone is about to raise `shared_buffers` because a graph
 
 ### 4.4 C — measured, and deliberately not ranked
 
-C's benefit is contingent on concurrent access, and the measurement environment is
-**single-connection by design** — which is what makes the timings reproducible. So the evidence that
-would judge C is, by construction, not collected. Ranking it would mean ranking on evidence that
-cannot speak to its main property. **The refusal is the finding.** It is recorded as measured, with
-its mechanism confirmed, and excluded from the ordering until a concurrency study exists.
+C is a configuration change rather than a schema one: the parallel-scan threshold lowered from 8 MB to
+1 MB, applied by `ALTER SYSTEM` and a configuration reload, no DDL. Its measured benefit — the ~7× on
+the heavy path — was collected at **single connection**, which is also the only condition the
+measurement environment offers: it is **single-connection by design**, and that is what makes the
+timings reproducible.
+
+Concurrency is where C is expected to **lose**. Lowering the threshold globally makes every small
+table eligible for parallel scan, so concurrent sessions each claim workers against a pool of eight
+on 2 vCPU until the single-connection gain inverts into an aggregate loss. A single-connection sweep
+therefore shows pure upside and is actively misleading. So the evidence that would judge C is, by
+construction, not collected. Ranking it would mean ranking on evidence that cannot speak to its main
+property. **The refusal is the finding.** It is recorded as measured, with its mechanism confirmed,
+and excluded from the ordering until a concurrency study exists.
+
+There is a second objection, independent of the first, that this section omitted. The 1 MB figure was
+chosen to sit below the 3.797 MB workouts heap at the scale being measured, so that the gate opens
+there. **Production's workouts heap is under 1 MB** — 224 workouts — so C at 1 MB would not open the
+gate on production at all. **C is a fix for a scale production has not reached**, which is a
+different objection from the unmeasured hazard and survives even if a concurrency study one day comes
+back clean.
+
+**A correction to this section as first published.** It opened *"C's benefit is contingent on
+concurrent access"*, and that has the sign backwards. The candidate record places C's benefit at
+**single connection** — the ~7× already measured at control — and registers, before any measurement,
+that **under concurrency the global change is expected to lose**, precisely because a
+single-connection sweep would show pure upside and mislead. The published reading was also incoherent
+on its own terms: C's measured benefit was itself collected single-connection, so concurrency cannot
+be the thing that vindicates it. **What is unchanged is the reason C is unranked** — its
+disqualifying evidence is concurrency, a single-connection sweep cannot collect that by construction,
+and the refusal to rank on evidence that cannot speak to the question stands exactly as published.
 
 ---
 
