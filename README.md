@@ -3,7 +3,7 @@
 A study of where a live PostgreSQL 16 application breaks under roughly a hundred times its real
 load — what failed, how it was diagnosed, what fixed it, and what did not.
 
-**[Read the findings →](findings.md)** · [PDF version](findings.pdf)
+**[Read the findings →](findings.md)**
 
 ---
 
