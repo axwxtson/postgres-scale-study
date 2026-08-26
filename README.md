@@ -57,10 +57,9 @@ can be reproduced elsewhere. The repository can be opened to a named reviewer on
 
 ## Status
 
-**Draft 8, 25 August 2026.** Section 5 previously described a migration plan that had not executed.
-It has now shipped — both indexes were created against live traffic and adopted by the planner — and
-§5 reports the result, including a correction to a claim that was already stale when draft 7 went
-out.
+**The findings document carries its own draft number, date, and the list of sections that hold
+corrections made after first publication.** It is revised in place rather than reissued, so read that
+header for the current state.
 
 The canonical copy lives in the private repository alongside the evidence it cites; this is a
 published snapshot.
